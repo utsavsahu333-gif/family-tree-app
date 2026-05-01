@@ -2,7 +2,7 @@ import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 
 const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "fallback-secret-change-me"
+  process.env.JWT_SECRET || "family-tree-secure-jwt-secret-2024-utsav"
 );
 
 export interface AuthPayload {

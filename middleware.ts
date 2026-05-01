@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
 
 const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "fallback-secret-change-me"
+  process.env.JWT_SECRET || "family-tree-secure-jwt-secret-2024-utsav"
 );
 
 export async function middleware(request: NextRequest) {
