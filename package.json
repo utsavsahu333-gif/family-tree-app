@@ -19,7 +19,7 @@
     "html2canvas": "^1.4.1",
     "jose": "^6.0.11",
     "jspdf": "^4.2.1",
-    "next": "15.3.2",
+    "next": "^16.2.4",
     "nodemailer": "^7.0.3",
     "prisma": "^6.19.3",
     "react": "^19.1.0",
@@ -34,7 +34,7 @@
     "@types/react-dom": "^19",
     "dotenv": "^17.4.2",
     "eslint": "^9",
-    "eslint-config-next": "15.3.2",
+    "eslint-config-next": "^16.2.4",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
