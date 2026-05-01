@@ -1,0 +1,82 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  password  String
+  role      String   @default("MEMBER")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  memberId  String?  @unique
+  member    FamilyMember? @relation(fields: [memberId], references: [id])
+  invites   Invite[]
+}
+
+model FamilyMember {
+  id        String   @id @default(cuid())
+  firstName String
+  lastName  String
+  birthDate String?
+  deathDate String?
+  gender    String
+  bio       String?
+  photoUrl  String?
+  user      User?
+  photos    Photo[]
+  events    Event[]
+  relFrom   Relationship[] @relation("FromMember")
+  relTo     Relationship[] @relation("ToMember")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Relationship {
+  id        String       @id @default(cuid())
+  type      String
+  fromId    String
+  toId      String
+  from      FamilyMember @relation("FromMember", fields: [fromId], references: [id], onDelete: Cascade)
+  to        FamilyMember @relation("ToMember", fields: [toId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now())
+
+  @@unique([fromId, toId, type])
+}
+
+model Photo {
+  id        String       @id @default(cuid())
+  url       String
+  caption   String?
+  memberId  String
+  member    FamilyMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now())
+}
+
+model Event {
+  id          String       @id @default(cuid())
+  type        String
+  title       String
+  description String?
+  date        String
+  memberId    String
+  member      FamilyMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  createdAt   DateTime     @default(now())
+}
+
+model Invite {
+  id          String   @id @default(cuid())
+  email       String
+  token       String   @unique
+  invitedById String
+  invitedBy   User     @relation(fields: [invitedById], references: [id])
+  accepted    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime
+}
