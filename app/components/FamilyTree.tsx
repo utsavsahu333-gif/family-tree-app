@@ -69,7 +69,8 @@ export default function FamilyTree({
     const animate = () => {
       setBubbles((prev) =>
         prev.map((b) => {
-          let { x, y, vx, vy, size } = b;
+          const { size } = b;
+          let { x, y, vx, vy } = b;
           const halfSize = size / 2;
 
           x += vx;
