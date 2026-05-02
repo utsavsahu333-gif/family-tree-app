@@ -23,9 +23,26 @@ export default function MemberDetailPage() {
   const [tab, setTab] = useState<"details" | "photos" | "events">("details");
   const [isAdmin, setIsAdmin] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editForm, setEditForm] = useState({
+    firstName: "", lastName: "", gender: "", birthDate: "", deathDate: "", bio: "",
+  });
 
   const fetchMember = () => {
-    fetch(`/api/members/${id}`).then(r => r.json()).then(d => setMember(d.member)).catch(console.error).finally(() => setLoading(false));
+    fetch(`/api/members/${id}`).then(r => r.json()).then(d => {
+      setMember(d.member);
+      if (d.member) {
+        setEditForm({
+          firstName: d.member.firstName || "",
+          lastName: d.member.lastName || "",
+          gender: d.member.gender || "OTHER",
+          birthDate: d.member.birthDate || "",
+          deathDate: d.member.deathDate || "",
+          bio: d.member.bio || "",
+        });
+      }
+    }).catch(console.error).finally(() => setLoading(false));
   };
   useEffect(() => { fetchMember(); }, [id]);
   useEffect(() => {
@@ -48,6 +65,28 @@ export default function MemberDetailPage() {
     setDeleting(false);
   };
 
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/members/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...editForm, photoUrl: member?.photoUrl }),
+      });
+      if (res.ok) {
+        addToast("Profile updated successfully!", "success");
+        setEditing(false);
+        fetchMember();
+      } else {
+        const data = await res.json();
+        addToast(data.error || "Failed to update", "error");
+      }
+    } catch { addToast("Something went wrong", "error"); }
+    setSaving(false);
+  };
+
+  const updateField = (key: string, value: string) => setEditForm(prev => ({ ...prev, [key]: value }));
+
   if (loading) return <div style={{ display: "flex", justifyContent: "center", padding: 80 }}><div className="animate-float" style={{ fontSize: 48 }}>👤</div></div>;
   if (!member) return <div style={{ textAlign: "center", padding: 80, color: "var(--muted)" }}><p>Member not found</p><button onClick={() => router.back()} className="btn-secondary" style={{ marginTop: 16 }}>← Back</button></div>;
 
@@ -66,17 +105,39 @@ export default function MemberDetailPage() {
 
   return (
     <div className="animate-fade-in">
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+      {/* Top bar */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
         <button onClick={() => router.back()} style={{ background: "none", border: "none", color: "var(--muted)", fontSize: 14, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>← Back</button>
         {isAdmin && (
-          <button onClick={handleDelete} disabled={deleting} className="btn-danger" style={{ fontSize: 13, padding: "8px 16px" }}>
-            {deleting ? "Removing..." : "🗑️ Delete Member"}
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            {!editing ? (
+              <button onClick={() => setEditing(true)} className="btn-primary" style={{ fontSize: 13, padding: "8px 16px" }}>
+                ✏️ Edit Profile
+              </button>
+            ) : (
+              <>
+                <button onClick={() => { setEditing(false); fetchMember(); }} className="btn-secondary" style={{ fontSize: 13, padding: "8px 16px" }}>
+                  Cancel
+                </button>
+                <button onClick={handleSave} disabled={saving} className="btn-primary" style={{ fontSize: 13, padding: "8px 16px" }}>
+                  {saving ? "Saving..." : "💾 Save Changes"}
+                </button>
+              </>
+            )}
+            <button onClick={handleDelete} disabled={deleting} style={{
+              fontSize: 13, padding: "8px 16px", borderRadius: 10, border: "1px solid rgba(239,68,68,0.3)",
+              background: "rgba(239,68,68,0.08)", color: "#ef4444", cursor: "pointer", fontFamily: "inherit", fontWeight: 600,
+            }}>
+              {deleting ? "..." : "🗑️"}
+            </button>
+          </div>
         )}
       </div>
 
+      {/* Profile Header */}
       <div className="glass-card" style={{ padding: 32, marginBottom: 24 }}>
         <div style={{ display: "flex", gap: 24, alignItems: "flex-start", flexWrap: "wrap" }}>
+          {/* Avatar with photo upload */}
           <div style={{ position: "relative", cursor: "pointer" }} onClick={() => document.getElementById("profile-photo-input")?.click()}>
             <div className="avatar" style={{ width: 100, height: 100, fontSize: 36, borderRadius: "50%" }}>
               {member.photoUrl ? <img src={member.photoUrl} alt={member.firstName} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} /> : member.firstName.charAt(0)}
@@ -107,18 +168,72 @@ export default function MemberDetailPage() {
               reader.readAsDataURL(file);
             }} />
           </div>
+
+          {/* Info / Edit form */}
           <div style={{ flex: 1, minWidth: 200 }}>
-            <h1 style={{ fontSize: 28, fontWeight: 800, marginBottom: 8 }}>{member.firstName} {member.lastName}</h1>
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
-              <span className={`badge ${genderBadge}`}>{genderLabel}</span>
-              {member.birthDate && <span className="badge badge-birth">🎂 Born {new Date(member.birthDate).toLocaleDateString()}</span>}
-              {member.deathDate && <span className="badge badge-death">✝ {new Date(member.deathDate).toLocaleDateString()}</span>}
-            </div>
-            {member.bio && <p style={{ fontSize: 14, color: "var(--muted)", lineHeight: 1.7 }}>{member.bio}</p>}
+            {editing ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div>
+                    <label style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, display: "block", color: "var(--muted)" }}>First Name</label>
+                    <input className="input-field" value={editForm.firstName} onChange={e => updateField("firstName", e.target.value)} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, display: "block", color: "var(--muted)" }}>Last Name</label>
+                    <input className="input-field" value={editForm.lastName} onChange={e => updateField("lastName", e.target.value)} />
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, display: "block", color: "var(--muted)" }}>Gender</label>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {[{ v: "MALE", l: "♂ Male" }, { v: "FEMALE", l: "♀ Female" }, { v: "OTHER", l: "⚧ Other" }].map(g => (
+                      <button key={g.v} type="button" onClick={() => updateField("gender", g.v)}
+                        style={{
+                          flex: 1, padding: "8px 12px", borderRadius: 8,
+                          border: editForm.gender === g.v ? "2px solid #10b981" : "1px solid var(--card-border)",
+                          background: editForm.gender === g.v ? "rgba(16,185,129,0.08)" : "var(--background)",
+                          fontWeight: editForm.gender === g.v ? 600 : 400, fontSize: 13,
+                          cursor: "pointer", color: "var(--foreground)", fontFamily: "inherit",
+                        }}>
+                        {g.l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div>
+                    <label style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, display: "block", color: "var(--muted)" }}>Birth Date</label>
+                    <input type="date" className="input-field" value={editForm.birthDate} onChange={e => updateField("birthDate", e.target.value)} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, display: "block", color: "var(--muted)" }}>Death Date</label>
+                    <input type="date" className="input-field" value={editForm.deathDate} onChange={e => updateField("deathDate", e.target.value)} />
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, display: "block", color: "var(--muted)" }}>Bio</label>
+                  <textarea className="input-field" value={editForm.bio} onChange={e => updateField("bio", e.target.value)} rows={3} style={{ resize: "vertical" }} placeholder="Write something about this person..." />
+                </div>
+              </div>
+            ) : (
+              <>
+                <h1 style={{ fontSize: 28, fontWeight: 800, marginBottom: 8 }}>{member.firstName} {member.lastName}</h1>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+                  <span className={`badge ${genderBadge}`}>{genderLabel}</span>
+                  {member.birthDate && <span className="badge badge-birth">🎂 Born {new Date(member.birthDate).toLocaleDateString()}</span>}
+                  {member.deathDate && <span className="badge badge-death">✝ {new Date(member.deathDate).toLocaleDateString()}</span>}
+                </div>
+                {member.bio && <p style={{ fontSize: 14, color: "var(--muted)", lineHeight: 1.7 }}>{member.bio}</p>}
+              </>
+            )}
           </div>
         </div>
       </div>
 
+      {/* Relationships */}
       {(parents.length > 0 || children.length > 0 || spouses.length > 0) && (
         <div className="glass-card" style={{ padding: 24, marginBottom: 24 }}>
           <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>Relationships</h2>
@@ -130,6 +245,7 @@ export default function MemberDetailPage() {
         </div>
       )}
 
+      {/* Tabs */}
       <div style={{ display: "flex", gap: 4, marginBottom: 20, background: "var(--card)", borderRadius: 10, padding: 4, border: "1px solid var(--card-border)", width: "fit-content" }}>
         {(["details", "photos", "events"] as const).map(t => (
           <button key={t} onClick={() => setTab(t)} style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: tab === t ? "var(--background)" : "transparent", fontWeight: tab === t ? 600 : 400, fontSize: 14, cursor: "pointer", color: "var(--foreground)", fontFamily: "inherit", boxShadow: tab === t ? "0 1px 3px rgba(0,0,0,0.08)" : "none" }}>
