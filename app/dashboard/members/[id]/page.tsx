@@ -4,14 +4,23 @@ import { useParams, useRouter } from "next/navigation";
 import PhotoGallery from "@/app/components/PhotoGallery";
 import { useToast } from "@/app/components/Toast";
 
+interface RelPerson { id: string; firstName: string; lastName: string }
+
+interface Rel {
+  id: string;
+  type: string;
+  to?: RelPerson;
+  from?: RelPerson;
+}
+
 interface Member {
   id: string; firstName: string; lastName: string; gender: string;
   birthDate: string | null; deathDate: string | null;
   photoUrl: string | null; bio: string | null;
   photos: { id: string; url: string; caption: string | null; createdAt: string }[];
   events: { id: string; type: string; title: string; date: string; description: string | null }[];
-  relFrom: { type: string; to: { id: string; firstName: string; lastName: string } }[];
-  relTo: { type: string; from: { id: string; firstName: string; lastName: string } }[];
+  relFrom: Rel[];
+  relTo: Rel[];
 }
 
 export default function MemberDetailPage() {
@@ -28,6 +37,14 @@ export default function MemberDetailPage() {
   const [editForm, setEditForm] = useState({
     firstName: "", lastName: "", gender: "", birthDate: "", deathDate: "", bio: "",
   });
+
+  // Relationship editing state
+  const [showRelModal, setShowRelModal] = useState(false);
+  const [allMembers, setAllMembers] = useState<{ id: string; firstName: string; lastName: string }[]>([]);
+  const [newRelType, setNewRelType] = useState("PARENT");
+  const [newRelTargetId, setNewRelTargetId] = useState("");
+  const [newRelDirection, setNewRelDirection] = useState<"from" | "to">("from");
+  const [addingRel, setAddingRel] = useState(false);
 
   const fetchMember = () => {
     fetch(`/api/members/${id}`).then(r => r.json()).then(d => {
@@ -48,6 +65,10 @@ export default function MemberDetailPage() {
   useEffect(() => {
     fetch("/api/auth/me").then(r => r.json()).then(d => setIsAdmin(d.user?.role === "ADMIN")).catch(() => {});
   }, []);
+
+  const fetchAllMembers = () => {
+    fetch("/api/members").then(r => r.json()).then(d => setAllMembers(d.members || [])).catch(console.error);
+  };
 
   const handleDelete = async () => {
     if (!confirm(`Are you sure you want to remove ${member?.firstName} ${member?.lastName} from the family tree? This cannot be undone.`)) return;
@@ -85,22 +106,89 @@ export default function MemberDetailPage() {
     setSaving(false);
   };
 
+  const handleAddRelationship = async () => {
+    if (!newRelTargetId) { addToast("Please select a family member", "error"); return; }
+    setAddingRel(true);
+    try {
+      const body = newRelDirection === "from"
+        ? { fromId: id, toId: newRelTargetId, type: newRelType }
+        : { fromId: newRelTargetId, toId: id, type: newRelType };
+
+      const res = await fetch("/api/relationships", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        addToast("Relationship added!", "success");
+        fetchMember();
+        setNewRelTargetId("");
+      } else {
+        addToast(data.error || "Failed to add relationship", "error");
+      }
+    } catch { addToast("Something went wrong", "error"); }
+    setAddingRel(false);
+  };
+
+  const handleDeleteRelationship = async (relId: string) => {
+    if (!confirm("Remove this relationship?")) return;
+    try {
+      const res = await fetch(`/api/relationships?id=${relId}`, { method: "DELETE" });
+      if (res.ok) {
+        addToast("Relationship removed", "success");
+        fetchMember();
+      } else {
+        const data = await res.json();
+        addToast(data.error || "Failed to remove", "error");
+      }
+    } catch { addToast("Something went wrong", "error"); }
+  };
+
   const updateField = (key: string, value: string) => setEditForm(prev => ({ ...prev, [key]: value }));
 
   if (loading) return <div style={{ display: "flex", justifyContent: "center", padding: 80 }}><div className="animate-float" style={{ fontSize: 48 }}>👤</div></div>;
   if (!member) return <div style={{ textAlign: "center", padding: 80, color: "var(--muted)" }}><p>Member not found</p><button onClick={() => router.back()} className="btn-secondary" style={{ marginTop: 16 }}>← Back</button></div>;
 
-  const parents = member.relTo.filter(r => r.type === "PARENT").map(r => r.from);
-  const children = member.relFrom.filter(r => r.type === "PARENT").map(r => r.to);
-  const spouses = [...member.relFrom.filter(r => r.type === "SPOUSE").map(r => r.to), ...member.relTo.filter(r => r.type === "SPOUSE").map(r => r.from)];
+  const parents = member.relTo.filter(r => r.type === "PARENT").map(r => ({ ...r.from!, relId: r.id }));
+  const children = member.relFrom.filter(r => r.type === "PARENT").map(r => ({ ...r.to!, relId: r.id }));
+  const spouses = [
+    ...member.relFrom.filter(r => r.type === "SPOUSE").map(r => ({ ...r.to!, relId: r.id })),
+    ...member.relTo.filter(r => r.type === "SPOUSE").map(r => ({ ...r.from!, relId: r.id })),
+  ];
+  const siblings = [
+    ...member.relFrom.filter(r => r.type === "SIBLING").map(r => ({ ...r.to!, relId: r.id })),
+    ...member.relTo.filter(r => r.type === "SIBLING").map(r => ({ ...r.from!, relId: r.id })),
+  ];
   const genderBadge = member.gender === "MALE" ? "badge-male" : member.gender === "FEMALE" ? "badge-female" : "badge-other";
   const genderLabel = member.gender === "MALE" ? "♂ Male" : member.gender === "FEMALE" ? "♀ Female" : "⚧ Other";
 
-  const RelButton = ({ person, label }: { person: { id: string; firstName: string; lastName: string }; label?: string }) => (
-    <button onClick={() => router.push(`/dashboard/members/${person.id}`)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "var(--background)", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 14, color: "var(--foreground)", fontFamily: "inherit", marginBottom: 4, width: "100%" }}>
-      <span className="avatar" style={{ width: 28, height: 28, fontSize: 12 }}>{person.firstName.charAt(0)}</span>
-      {person.firstName} {person.lastName} {label || ""}
-    </button>
+  // Direction helper text for the add-relationship form
+  const getDirectionLabel = () => {
+    if (newRelType === "PARENT" && newRelDirection === "from") return `${member.firstName} is PARENT of →`;
+    if (newRelType === "PARENT" && newRelDirection === "to") return `← is PARENT of ${member.firstName}`;
+    if (newRelType === "SPOUSE") return `${member.firstName} ↔ Spouse`;
+    if (newRelType === "SIBLING") return `${member.firstName} ↔ Sibling`;
+    return "";
+  };
+
+  const RelButton = ({ person, label, relId }: { person: { id: string; firstName: string; lastName: string }; label?: string; relId?: string }) => (
+    <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 4 }}>
+      <button onClick={() => router.push(`/dashboard/members/${person.id}`)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "var(--background)", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 14, color: "var(--foreground)", fontFamily: "inherit", flex: 1 }}>
+        <span className="avatar" style={{ width: 28, height: 28, fontSize: 12 }}>{person.firstName.charAt(0)}</span>
+        {person.firstName} {person.lastName} {label || ""}
+      </button>
+      {isAdmin && showRelModal && relId && (
+        <button onClick={() => handleDeleteRelationship(relId)} style={{
+          width: 28, height: 28, borderRadius: 8, border: "1px solid rgba(239,68,68,0.3)",
+          background: "rgba(239,68,68,0.08)", color: "#ef4444", cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14,
+          flexShrink: 0,
+        }}>
+          ✕
+        </button>
+      )}
+    </div>
   );
 
   return (
@@ -234,16 +322,115 @@ export default function MemberDetailPage() {
       </div>
 
       {/* Relationships */}
-      {(parents.length > 0 || children.length > 0 || spouses.length > 0) && (
-        <div className="glass-card" style={{ padding: 24, marginBottom: 24 }}>
-          <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>Relationships</h2>
-          <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
-            {parents.length > 0 && <div><div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 }}>Parents</div>{parents.map(p => <RelButton key={p.id} person={p} />)}</div>}
-            {spouses.length > 0 && <div><div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 }}>Spouse</div>{spouses.map(s => <RelButton key={s.id} person={s} label="💍" />)}</div>}
-            {children.length > 0 && <div><div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 }}>Children</div>{children.map(c => <RelButton key={c.id} person={c} />)}</div>}
-          </div>
+      <div className="glass-card" style={{ padding: 24, marginBottom: 24 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700 }}>Relationships</h2>
+          {isAdmin && (
+            <button
+              onClick={() => { setShowRelModal(!showRelModal); if (!showRelModal) fetchAllMembers(); }}
+              className={showRelModal ? "btn-secondary" : "btn-primary"}
+              style={{ fontSize: 12, padding: "6px 14px" }}
+            >
+              {showRelModal ? "Done" : "✏️ Edit Relationships"}
+            </button>
+          )}
         </div>
-      )}
+
+        {parents.length === 0 && children.length === 0 && spouses.length === 0 && siblings.length === 0 && !showRelModal && (
+          <p style={{ color: "var(--muted)", fontSize: 14 }}>No relationships added yet.</p>
+        )}
+
+        <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
+          {parents.length > 0 && <div><div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 }}>Parents</div>{parents.map(p => <RelButton key={p.relId} person={p} relId={p.relId} />)}</div>}
+          {spouses.length > 0 && <div><div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 }}>Spouse</div>{spouses.map(s => <RelButton key={s.relId} person={s} label="💍" relId={s.relId} />)}</div>}
+          {children.length > 0 && <div><div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 }}>Children</div>{children.map(c => <RelButton key={c.relId} person={c} relId={c.relId} />)}</div>}
+          {siblings.length > 0 && <div><div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 }}>Siblings</div>{siblings.map(s => <RelButton key={s.relId} person={s} label="👫" relId={s.relId} />)}</div>}
+        </div>
+
+        {/* Add Relationship Form (inline, shown when editing) */}
+        {showRelModal && (
+          <div style={{
+            marginTop: 20, padding: 20, background: "var(--background)",
+            borderRadius: 12, border: "1px solid var(--card-border)",
+          }}>
+            <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 14 }}>➕ Add New Relationship</h3>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {/* Relationship type */}
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, display: "block", color: "var(--muted)" }}>Type</label>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {[
+                    { v: "PARENT", l: "👨‍👦 Parent", emoji: "👨‍👦" },
+                    { v: "SPOUSE", l: "💍 Spouse", emoji: "💍" },
+                    { v: "SIBLING", l: "👫 Sibling", emoji: "👫" },
+                  ].map(t => (
+                    <button key={t.v} type="button" onClick={() => setNewRelType(t.v)}
+                      style={{
+                        flex: 1, padding: "8px 10px", borderRadius: 8,
+                        border: newRelType === t.v ? "2px solid #10b981" : "1px solid var(--card-border)",
+                        background: newRelType === t.v ? "rgba(16,185,129,0.08)" : "var(--card)",
+                        fontWeight: newRelType === t.v ? 600 : 400, fontSize: 12,
+                        cursor: "pointer", color: "var(--foreground)", fontFamily: "inherit",
+                      }}>
+                      {t.l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Direction (only for PARENT) */}
+              {newRelType === "PARENT" && (
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, display: "block", color: "var(--muted)" }}>Direction</label>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button type="button" onClick={() => setNewRelDirection("from")}
+                      style={{
+                        flex: 1, padding: "8px 10px", borderRadius: 8, fontSize: 12,
+                        border: newRelDirection === "from" ? "2px solid #10b981" : "1px solid var(--card-border)",
+                        background: newRelDirection === "from" ? "rgba(16,185,129,0.08)" : "var(--card)",
+                        fontWeight: newRelDirection === "from" ? 600 : 400,
+                        cursor: "pointer", color: "var(--foreground)", fontFamily: "inherit",
+                      }}>
+                      {member.firstName} is parent of...
+                    </button>
+                    <button type="button" onClick={() => setNewRelDirection("to")}
+                      style={{
+                        flex: 1, padding: "8px 10px", borderRadius: 8, fontSize: 12,
+                        border: newRelDirection === "to" ? "2px solid #10b981" : "1px solid var(--card-border)",
+                        background: newRelDirection === "to" ? "rgba(16,185,129,0.08)" : "var(--card)",
+                        fontWeight: newRelDirection === "to" ? 600 : 400,
+                        cursor: "pointer", color: "var(--foreground)", fontFamily: "inherit",
+                      }}>
+                      ... is parent of {member.firstName}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Direction label */}
+              <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic", textAlign: "center" }}>
+                {getDirectionLabel()}
+              </div>
+
+              {/* Select member */}
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, display: "block", color: "var(--muted)" }}>Select Member</label>
+                <select className="input-field" value={newRelTargetId} onChange={e => setNewRelTargetId(e.target.value)}>
+                  <option value="">Choose a family member...</option>
+                  {allMembers.filter(m => m.id !== id).map(m => (
+                    <option key={m.id} value={m.id}>{m.firstName} {m.lastName}</option>
+                  ))}
+                </select>
+              </div>
+
+              <button onClick={handleAddRelationship} disabled={addingRel || !newRelTargetId} className="btn-primary" style={{ fontSize: 13, padding: "10px 20px" }}>
+                {addingRel ? "Adding..." : "➕ Add Relationship"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Tabs */}
       <div style={{ display: "flex", gap: 4, marginBottom: 20, background: "var(--card)", borderRadius: 10, padding: 4, border: "1px solid var(--card-border)", width: "fit-content" }}>

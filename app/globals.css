@@ -457,3 +457,13 @@ body {
   height: 100%;
   object-fit: cover;
 }
+
+/* ===== HIERARCHICAL TREE ===== */
+.tree-person-node {
+  transition: transform 0.3s ease;
+}
+
+.tree-person-node:hover {
+  filter: drop-shadow(0 4px 12px rgba(16, 185, 129, 0.25));
+}
+

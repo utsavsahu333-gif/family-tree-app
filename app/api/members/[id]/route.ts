@@ -16,8 +16,8 @@ export async function GET(
       include: {
         photos: { orderBy: { createdAt: "desc" } },
         events: { orderBy: { date: "asc" } },
-        relFrom: { include: { to: true } },
-        relTo: { include: { from: true } },
+        relFrom: { select: { id: true, type: true, to: { select: { id: true, firstName: true, lastName: true } } } },
+        relTo: { select: { id: true, type: true, from: { select: { id: true, firstName: true, lastName: true } } } },
       },
     });
 
