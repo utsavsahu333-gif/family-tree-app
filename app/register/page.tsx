@@ -26,7 +26,11 @@ function RegisterForm() {
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error || "Registration failed"); setLoading(false); return; }
-      router.push("/dashboard");
+      if (data.user?.status === "PENDING") {
+        router.push("/pending");
+      } else {
+        router.push("/dashboard");
+      }
     } catch { setError("Something went wrong"); setLoading(false); }
   };
 

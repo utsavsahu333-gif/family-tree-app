@@ -16,6 +16,12 @@ export async function POST(request: NextRequest) {
 
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
+      if (existing.status === "REJECTED") {
+        return NextResponse.json(
+          { error: "This account has been rejected by the admin" },
+          { status: 403 }
+        );
+      }
       return NextResponse.json(
         { error: "Email already registered" },
         { status: 409 }
@@ -23,6 +29,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check invite token if provided
+    let isInvited = false;
     if (inviteToken) {
       const invite = await prisma.invite.findUnique({
         where: { token: inviteToken },
@@ -37,25 +44,28 @@ export async function POST(request: NextRequest) {
         where: { token: inviteToken },
         data: { accepted: true },
       });
+      isInvited = true;
     }
 
-    // First user becomes admin
+    // First user becomes admin + approved; invited users are auto-approved
     const userCount = await prisma.user.count();
     const role = userCount === 0 ? "ADMIN" : "MEMBER";
+    const status = userCount === 0 || isInvited ? "APPROVED" : "PENDING";
 
     const hashed = hashSync(password, 12);
     const user = await prisma.user.create({
-      data: { email, name, password: hashed, role },
+      data: { email, name, password: hashed, role, status },
     });
 
     const token = await signToken({
       userId: user.id,
       email: user.email,
       role: user.role,
+      status: user.status,
     });
 
     const response = NextResponse.json(
-      { user: { id: user.id, email: user.email, name: user.name, role: user.role } },
+      { user: { id: user.id, email: user.email, name: user.name, role: user.role, status: user.status } },
       { status: 201 }
     );
     response.cookies.set(createAuthCookie(token));

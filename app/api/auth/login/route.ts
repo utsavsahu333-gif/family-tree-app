@@ -22,14 +22,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Block rejected users
+    if (user.status === "REJECTED") {
+      return NextResponse.json(
+        { error: "Your account has been rejected by the admin. Contact them for access." },
+        { status: 403 }
+      );
+    }
+
     const token = await signToken({
       userId: user.id,
       email: user.email,
       role: user.role,
+      status: user.status,
     });
 
     const response = NextResponse.json({
-      user: { id: user.id, email: user.email, name: user.name, role: user.role },
+      user: { id: user.id, email: user.email, name: user.name, role: user.role, status: user.status },
     });
     response.cookies.set(createAuthCookie(token));
     return response;

@@ -16,6 +16,7 @@ export default function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
   const [user, setUser] = useState<{ name: string; email: string; role: string } | null>(null);
+  const [pendingCount, setPendingCount] = useState(0);
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -23,6 +24,19 @@ export default function Navbar() {
       .then((d) => d.user && setUser(d.user))
       .catch(() => {});
   }, []);
+
+  // Fetch pending user count for admins
+  useEffect(() => {
+    if (user?.role !== "ADMIN") return;
+    fetch("/api/users")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.users) {
+          setPendingCount(d.users.filter((u: { status: string }) => u.status === "PENDING").length);
+        }
+      })
+      .catch(() => {});
+  }, [user]);
 
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -33,6 +47,8 @@ export default function Navbar() {
     if (href === "/dashboard") return pathname === "/dashboard";
     return pathname.startsWith(href);
   };
+
+  const isAdmin = user?.role === "ADMIN";
 
   return (
     <>
@@ -92,6 +108,35 @@ export default function Navbar() {
               {item.label}
             </Link>
           ))}
+
+          {/* Admin-only: Users link */}
+          {isAdmin && (
+            <Link
+              href="/dashboard/users"
+              className={`nav-link ${isActive("/dashboard/users") ? "active" : ""}`}
+              style={{ position: "relative" }}
+            >
+              <span style={{ fontSize: 18 }}>🛡️</span>
+              Users
+              {pendingCount > 0 && (
+                <span
+                  style={{
+                    marginLeft: "auto",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    padding: "2px 8px",
+                    borderRadius: 10,
+                    background: "rgba(245, 158, 11, 0.15)",
+                    color: "#f59e0b",
+                    minWidth: 20,
+                    textAlign: "center",
+                  }}
+                >
+                  {pendingCount}
+                </span>
+              )}
+            </Link>
+          )}
         </nav>
 
         {/* User section */}
@@ -128,11 +173,29 @@ export default function Navbar() {
           <span style={{ fontSize: 24 }}>🌳</span>
           <span style={{ fontWeight: 700, fontSize: 16 }}>Family Tree</span>
         </div>
-        {user && (
-          <div className="avatar" style={{ width: 32, height: 32, fontSize: 14 }}>
-            {user.name.charAt(0).toUpperCase()}
-          </div>
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {isAdmin && pendingCount > 0 && (
+            <Link
+              href="/dashboard/users"
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                padding: "4px 10px",
+                borderRadius: 10,
+                background: "rgba(245, 158, 11, 0.15)",
+                color: "#f59e0b",
+                textDecoration: "none",
+              }}
+            >
+              {pendingCount} pending
+            </Link>
+          )}
+          {user && (
+            <div className="avatar" style={{ width: 32, height: 32, fontSize: 14 }}>
+              {user.name.charAt(0).toUpperCase()}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Mobile bottom nav */}

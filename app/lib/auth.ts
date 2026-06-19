@@ -9,6 +9,7 @@ export interface AuthPayload {
   userId: string;
   email: string;
   role: string;
+  status: string;
 }
 
 export async function signToken(payload: AuthPayload): Promise<string> {
@@ -35,16 +36,19 @@ export async function getAuthUser(): Promise<AuthPayload | null> {
   const payload = await verifyToken(token);
   if (!payload) return null;
 
-  // Always fetch fresh role from DB (handles direct DB role changes)
+  // Always fetch fresh role + status from DB (handles direct DB changes)
   try {
     const { default: prisma } = await import("@/app/lib/prisma");
     const user = await prisma.user.findUnique({
       where: { id: payload.userId },
-      select: { role: true },
+      select: { role: true, status: true },
     });
-    if (user) payload.role = user.role;
+    if (user) {
+      payload.role = user.role;
+      payload.status = user.status;
+    }
   } catch {
-    // If DB lookup fails, fall back to token role
+    // If DB lookup fails, fall back to token values
   }
 
   return payload;

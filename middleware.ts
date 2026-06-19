@@ -10,11 +10,16 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   const isAuthPage = pathname === "/login" || pathname === "/register";
+  const isPendingPage = pathname === "/pending";
 
   if (isAuthPage) {
     if (token) {
       try {
-        await jwtVerify(token, JWT_SECRET);
+        const { payload } = await jwtVerify(token, JWT_SECRET);
+        const status = (payload as { status?: string }).status;
+        if (status === "PENDING") {
+          return NextResponse.redirect(new URL("/pending", request.url));
+        }
         return NextResponse.redirect(new URL("/dashboard", request.url));
       } catch {
         // Invalid token, let them access auth pages
@@ -23,13 +28,35 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Protected routes
+  // Pending page — allow access only if authenticated and pending
+  if (isPendingPage) {
+    if (!token) {
+      return NextResponse.redirect(new URL("/login", request.url));
+    }
+    try {
+      await jwtVerify(token, JWT_SECRET);
+      return NextResponse.next();
+    } catch {
+      const response = NextResponse.redirect(new URL("/login", request.url));
+      response.cookies.delete("auth-token");
+      return response;
+    }
+  }
+
+  // Protected dashboard routes
   if (!token) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
   try {
-    await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const status = (payload as { status?: string }).status;
+
+    // Block pending users from dashboard — redirect to waiting page
+    if (status === "PENDING") {
+      return NextResponse.redirect(new URL("/pending", request.url));
+    }
+
     return NextResponse.next();
   } catch {
     const response = NextResponse.redirect(new URL("/login", request.url));
@@ -39,5 +66,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/login", "/register"],
+  matcher: ["/dashboard/:path*", "/login", "/register", "/pending"],
 };

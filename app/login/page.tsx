@@ -22,7 +22,11 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error || "Login failed"); setLoading(false); return; }
-      router.push("/dashboard");
+      if (data.user?.status === "PENDING") {
+        router.push("/pending");
+      } else {
+        router.push("/dashboard");
+      }
     } catch {
       setError("Something went wrong");
       setLoading(false);
